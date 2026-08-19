@@ -29,9 +29,28 @@ cmd_check() {
     ok "/dev/kvm present and accessible"
   else
     warn "/dev/kvm missing or inaccessible — this demo needs KVM/nested virt."
-    warn "On AWS use a *.metal or nested-virt-capable instance, or skip to demo 05."
+    warn "On AWS: use a nested-virt-capable Intel instance (c7i/m7i/… with"
+    warn "  NestedVirtualization=enabled) or a *.metal instance; or skip to demo 05."
+    warn "Also ensure your user is in the 'kvm' group: sudo usermod -aG kvm \$USER (re-login)."
     ok=0
   fi
+
+  # Rootless bcvk runs QEMU inside a podman container, which needs the host 'kvm'
+  # supplementary group preserved via the keep-groups annotation — otherwise the
+  # containerized QEMU can't open /dev/kvm even when the host user can ("KVM
+  # device not accessible").
+  if grep -rqs 'keep_original_groups' \
+        "$HOME/.config/containers/containers.conf" \
+        /etc/containers/containers.conf /etc/containers/containers.conf.d 2>/dev/null; then
+    ok "rootless keep-groups annotation is configured"
+  else
+    warn "rootless podman may not pass the 'kvm' group into containers."
+    warn "If bcvk reports 'KVM device not accessible', add to"
+    warn "  ~/.config/containers/containers.conf :"
+    warn '    [containers]'
+    warn '    annotations = ["run.oci.keep_original_groups=1"]'
+  fi
+
   [ "$ok" -eq 1 ] && ok "environment looks good" || die "environment not ready (see warnings)"
 }
 

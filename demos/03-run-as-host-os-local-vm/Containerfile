@@ -9,4 +9,9 @@ FROM ${FROM_IMAGE}
 RUN dnf -y install binutils bubblewrap openssh-clients openssh-server && dnf clean all \
  && systemctl enable sshd
 
+# Same filesystem hygiene as the base image: clear build-time leftovers from
+# /var and /run so they don't ship in the image (and so bootc lint stays clean).
+RUN rm -rf /var/cache/* /var/lib/dnf /var/log/* /var/tmp/* /tmp/* /run/* \
+           /var/lib/rhsm/* /var/lib/rhsm/.??*
+
 RUN bootc container lint

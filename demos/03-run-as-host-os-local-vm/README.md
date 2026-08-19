@@ -21,9 +21,44 @@ tool for launching bootc containers as VMs on Linux.
 ## Prerequisites
 
 - Demo 01 has been run (image `localhost/bootc-demo:v1` exists)
-- `bcvk`, `podman`, `qemu-kvm`, `virtiofsd`; `libvirt` running for the persistent path
-- **KVM:** `ls -l /dev/kvm` must exist and be accessible. On AWS that means a `*.metal` or
-  nested-virt-capable instance. **No KVM → skip this demo**; demo 05 boots a real cloud host.
+- `bcvk`, `podman`, `qemu-system-x86_64`, `virtiofsd` (and `swtpm`); `libvirt` for the persistent
+  path
+- **KVM:** `ls -l /dev/kvm` must exist and be accessible. On AWS this now means a **nested-virt
+  capable Intel instance** — `c7i`/`m7i`/`r7i`/`c8i`/… launched (or reconfigured while stopped)
+  with `NestedVirtualization=enabled` — *or* a `*.metal` instance. Older families (e.g. `c5`) and
+  Graviton/AMD don't qualify. **No KVM → skip this demo**; demo 05 boots a real cloud host.
+
+### Setup (one-time, per distro)
+
+**Fedora / RHEL / CentOS (EPEL):**
+```bash
+sudo dnf install -y bcvk qemu-kvm virtiofsd swtpm
+```
+
+**Debian / Ubuntu** (`bcvk` isn't packaged — install the release binary):
+```bash
+sudo apt-get install -y qemu-system-x86 qemu-utils virtiofsd swtpm
+ver=v0.18.0
+curl -fsSLO https://github.com/bootc-dev/bcvk/releases/download/$ver/bcvk-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf bcvk-x86_64-unknown-linux-gnu.tar.gz
+sudo install -m0755 bcvk-x86_64-unknown-linux-gnu /usr/local/bin/bcvk
+```
+
+**Both — grant KVM access for rootless bcvk:**
+```bash
+sudo usermod -aG kvm "$USER"      # then re-login so the group takes effect
+```
+`bcvk` runs QEMU inside a *rootless* podman container, which does **not** inherit your host `kvm`
+group by default — so the containerized QEMU fails with `KVM device not accessible` even though
+you can open `/dev/kvm`. Fix it globally by preserving host groups in containers:
+```bash
+mkdir -p ~/.config/containers
+cat >> ~/.config/containers/containers.conf <<'EOF'
+[containers]
+annotations = ["run.oci.keep_original_groups=1"]
+EOF
+```
+`./run.sh check` verifies all of the above before you start.
 
 This demo builds a thin overlay ([`Containerfile`](./Containerfile)) adding the tools `bcvk
 ephemeral` expects in the target image (`binutils`, `bubblewrap`, `openssh-*`).
@@ -38,19 +73,37 @@ ephemeral` expects in the target image (`binutils`, `bubblewrap`, `openssh-*`).
 ./run.sh cleanup      # remove the persistent VM + overlay image
 ```
 
-Inside the VM, confirm it's a booted bootc host:
+Inside the VM, confirm it's a booted host:
 
 ```bash
-bootc status                 # shows the booted image + digest
-systemctl status httpd       # enabled service is running under host systemd
-cat /usr/share/bootc-demo-version   # -> v1
 uname -r                     # the image's OWN kernel (was inert in demo 02)
+cat /proc/1/comm             # -> systemd  (PID 1 of the machine)
+systemctl is-active httpd    # -> active   (enabled service started on boot)
+curl -s http://localhost/    # -> the v1 page
+cat /usr/share/bootc-demo-version   # -> v1
+```
+
+You can also run a single command non-interactively (boots, runs, tears down):
+
+```bash
+bcvk ephemeral run-ssh localhost/bootc-demo:v1-bcvk -- uname -r
 ```
 
 ## Expected output
 
-- `bcvk` builds a disk, boots a VM, and drops you into an SSH session.
-- `bootc status` shows `localhost/bootc-demo:v1-bcvk`; `httpd` is active; `/usr` is read-only.
+`ephemeral` boots the image and (validated on a `c7i.2xlarge`) reports:
+
+```
+kernel: 6.12.0-253.el10.x86_64     # the image's CentOS kernel, not the host's
+pid1:   systemd
+httpd:  active
+page:   <h1>bootc demo — v1</h1>
+```
+
+> **Note on `bootc status`:** in `ephemeral` mode `bcvk` boots the image's filesystem *directly*
+> as a transient disk, so `bootc status` is empty (there's no installed/tracked deployment). The
+> full deployment status (booted image + digest, `/usr` read-only, rollback slot) is what the
+> **persistent `libvirt` path** and **demo 05** (real install on EC2) show.
 
 ## What next
 
