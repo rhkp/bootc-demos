@@ -11,3 +11,8 @@ common/env
 
 # generated demo ssh keys
 **/.demo-keys/
+
+# per-run cloud state (instance/AMI ids, public IP) written by demos 05/06
+**/.instance-id
+**/.instance-ip
+**/.ami-id
