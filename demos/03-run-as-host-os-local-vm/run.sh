@@ -20,6 +20,10 @@ IMAGE_NAME="${IMAGE_NAME:-bootc-demo}"
 BASE_TAG="localhost/${IMAGE_NAME}:v1"
 BCVK_TAG="localhost/${IMAGE_NAME}:v1-bcvk"
 VM_NAME="bootc-demo-03"
+# Rootless libvirt: qemu:///session installs into ~/.local/share/libvirt and
+# needs no root. qemu:///system requires root/perms on /var/lib/libvirt (fails
+# for an ordinary user), so default to the session URI. Override via env.
+LIBVIRT_URI="${LIBVIRT_URI:-qemu:///session}"
 
 cmd_check() {
   local ok=1
@@ -74,16 +78,16 @@ cmd_libvirt() {
   cmd_check
   require_cmd bcvk
   _build_overlay
-  log "Creating persistent libvirt VM '$VM_NAME'"
-  bcvk libvirt run --name "$VM_NAME" "$BCVK_TAG"
+  log "Creating persistent libvirt VM '$VM_NAME' (connect: $LIBVIRT_URI)"
+  bcvk libvirt --connect "$LIBVIRT_URI" run --replace --name "$VM_NAME" "$BCVK_TAG"
   ok "VM '$VM_NAME' created. SSH with: ./run.sh ssh"
 }
 
-cmd_ssh()   { require_cmd bcvk; bcvk libvirt ssh "$VM_NAME"; }
+cmd_ssh()   { require_cmd bcvk; bcvk libvirt --connect "$LIBVIRT_URI" ssh "$VM_NAME"; }
 
 cmd_cleanup() {
   log "Removing persistent VM '$VM_NAME' (if any)"
-  bcvk libvirt rm -f "$VM_NAME" 2>/dev/null || true
+  bcvk libvirt --connect "$LIBVIRT_URI" rm -f "$VM_NAME" 2>/dev/null || true
   log "Removing overlay image $BCVK_TAG"
   podman rmi -f "$BCVK_TAG" 2>/dev/null || true
   ok "cleaned up"

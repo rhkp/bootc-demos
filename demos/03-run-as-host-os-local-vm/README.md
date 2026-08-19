@@ -60,6 +60,18 @@ EOF
 ```
 `./run.sh check` verifies all of the above before you start.
 
+**For the persistent `libvirt` path only** — install libvirt and use the rootless
+**`qemu:///session`** URI (the default in `run.sh`). The system URI `qemu:///system` needs root
+and fails writing `/var/lib/libvirt/images` for an ordinary user; the session URI installs into
+`~/.local/share/libvirt/images` with no root needed.
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y libvirt-daemon-system libvirt-clients
+# Fedora/RHEL/CentOS
+sudo dnf install -y libvirt
+```
+Override the URI if you really want system mode: `LIBVIRT_URI=qemu:///system ./run.sh libvirt`.
+
 This demo builds a thin overlay ([`Containerfile`](./Containerfile)) adding the tools `bcvk
 ephemeral` expects in the target image (`binutils`, `bubblewrap`, `openssh-*`).
 
@@ -104,6 +116,27 @@ page:   <h1>bootc demo — v1</h1>
 > as a transient disk, so `bootc status` is empty (there's no installed/tracked deployment). The
 > full deployment status (booted image + digest, `/usr` read-only, rollback slot) is what the
 > **persistent `libvirt` path** and **demo 05** (real install on EC2) show.
+
+> **Note on `Failed Units: 1 — bootloader-update.service` (ephemeral only):** harmless. Because
+> `ephemeral` boots the disk directly there is no persistent bootloader to write, so the service
+> exits non-zero. It does not affect the kernel, `httpd`, or SSH. The `libvirt` path does a real
+> install and does not show this.
+
+The persistent `libvirt` VM, in contrast, reports a full installed deployment — validated on a
+`c7i.2xlarge`:
+
+```
+$ ./run.sh ssh
+$ sudo bootc status
+  ...
+  status:
+    booted:
+      image:
+        image: localhost/bootc-demo:v1-bcvk
+      imageDigest: sha256:a1d2446c...        # tracked deployment (not empty)
+      ostree: { stateroot: default, ... }    # /usr read-only from ostree/composefs
+    rollback: null                            # rollback slot present
+```
 
 ## What next
 
