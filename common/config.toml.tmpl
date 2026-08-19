@@ -1,0 +1,20 @@
+# common/config.toml.tmpl — bootc-image-builder build config template.
+#
+# Used by demos that turn the container image into a bootable disk (qcow2/AMI).
+# The generic bootc base images ship NO default user, NO default password, and
+# NO cloud-init, so we bake a login user here.
+#
+# Placeholders are substituted by run.sh:
+#   __USERNAME__   login user name        (e.g. "demo")
+#   __PASSWORD__   plaintext password     (demo only — do not do this in prod)
+#   __SSHKEY__     public SSH key content (e.g. contents of ~/.ssh/id_ed25519.pub)
+#
+# Schema reference: https://github.com/osbuild/bootc-image-builder#-build-config
+
+[[customizations.user]]
+name = "__USERNAME__"
+password = "__PASSWORD__"
+key = "__SSHKEY__"
+# "wheel" grants sudo. The demo images also drop a passwordless-sudo file for
+# wheel so `sudo` works even if you clear the password.
+groups = ["wheel"]

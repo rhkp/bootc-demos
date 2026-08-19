@@ -1,0 +1,47 @@
+# common/Containerfile.base — the shared demo bootc image.
+#
+# One image, consumed every way: as a plain container (demo 02), booted as a
+# host OS locally (demo 03) and in the cloud (demo 05), and updated/rolled back
+# (demo 06). Built by demo 01.
+#
+# Applies the brief's Core Best Practices:
+#   - relocate image-bound web content out of /var (mutable) into /usr (immutable)
+#   - configure via offline file writes, not live daemons
+#   - `bootc container lint` as the final build step
+#
+# Override the base image or version stamp at build time:
+#   podman build --build-arg BASE=<img> --build-arg VERSION=v2 -f Containerfile.base -t <tag> .
+
+ARG BASE=quay.io/centos-bootc/centos-bootc:stream10
+FROM ${BASE}
+
+# Version stamp baked into the served page + motd so you can see which image is
+# booted at any moment (used heavily by the upgrade/rollback demo).
+ARG VERSION=v1
+
+# Install the web server. Clean the dnf cache in the same layer (best practice).
+RUN dnf -y install httpd && dnf clean all
+
+# Best practice: image-bound static content belongs in /usr (read-only at boot),
+# not /var (mutable state). Move it and symlink so httpd's default paths work.
+RUN mv /var/www /usr/share/www && ln -s /usr/share/www /var/www
+
+# Write the demo landing page (offline file write — no running daemons at build).
+RUN printf '<!doctype html>\n<html><body>\n<h1>bootc demo — %s</h1>\n<p>Served from an immutable bootc image.</p>\n</body></html>\n' "${VERSION}" \
+      > /usr/share/www/html/index.html
+
+# Version stamp for the login banner + a quick CLI check inside the VM.
+RUN printf 'bootc demo image: %s\n' "${VERSION}" > /etc/motd \
+ && printf '%s\n' "${VERSION}" > /usr/share/bootc-demo-version
+
+# Passwordless sudo for wheel so the baked demo user can run bootc commands
+# even if the password is cleared. (Demo convenience — not for production.)
+RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd \
+ && chmod 0440 /etc/sudoers.d/wheel-nopasswd
+
+# Enable the service so it starts on boot (systemd is PID 1 in the booted OS).
+RUN systemctl enable httpd
+
+# Best practice: lint as the final instruction — validates single kernel,
+# kernel args, and filesystem hygiene.
+RUN bootc container lint

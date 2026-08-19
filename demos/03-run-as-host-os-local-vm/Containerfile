@@ -1,0 +1,12 @@
+# Demo 03 overlay — adds the tools `bcvk ephemeral` expects inside the target
+# image (systemctl, objcopy/binutils, bwrap/bubblewrap, ssh/ssh-keygen).
+# Built ON TOP of the shared demo image so demo 03 stays a thin, focused layer.
+#
+#   podman build -f Containerfile -t localhost/bootc-demo:v1-bcvk .
+ARG FROM_IMAGE=localhost/bootc-demo:v1
+FROM ${FROM_IMAGE}
+
+RUN dnf -y install binutils bubblewrap openssh-clients openssh-server && dnf clean all \
+ && systemctl enable sshd
+
+RUN bootc container lint

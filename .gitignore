@@ -1,0 +1,13 @@
+# local secrets / machine-specific config
+common/env
+
+# generated build artifacts
+**/output/
+**/*.qcow2
+**/*.raw
+**/*.img
+**/config.toml
+**/edk2-*-vars.fd
+
+# generated demo ssh keys
+**/.demo-keys/
