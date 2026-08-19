@@ -15,6 +15,9 @@ It also applies the brief's **Core Best Practices**:
   `/usr/share/www` (immutable at boot) and symlinked back — so content ships and updates *with
   the image*.
 - **Offline configuration:** files are written directly during build (no live `systemd`/`dbus`).
+- **Filesystem hygiene:** `/var` and `/run` hold machine-local state that is reset/regenerated
+  at boot, so build-time leftovers there (dnf cache + history, logs, subscription-manager
+  artifacts) don't belong in the image. A cleanup step clears them right before the lint.
 - **`bootc container lint`** is the final build step — it validates a single kernel, kernel
   args, and filesystem hygiene.
 
@@ -38,8 +41,13 @@ Override the base image or name via `common/env` (`BASE_IMAGE`, `IMAGE_NAME`).
 ## Expected output
 
 - `podman build` completes; the final `RUN bootc container lint` step succeeds.
-- The image shows the `containers.bootc=1` label (marks it as a bootable container).
-- `bootc container lint` prints no errors.
+- The image shows the `containers.bootc=1` (and `ostree.bootable=1`) labels — it's a bootable
+  container.
+- `bootc container lint` reports **Checks passed: 12, Warnings: 1** and passes. The single
+  remaining warning (`var-tmpfiles` on `/var/roothome/buildinfo/content-sets.json`) is inherited
+  from the CentOS bootc **base image**, not introduced by this Containerfile — verify with
+  `podman run --rm quay.io/centos-bootc/centos-bootc:stream10 ls /var/roothome/buildinfo`. We
+  leave base-shipped metadata in place rather than deleting it just to silence the linter.
 
 ## What next
 

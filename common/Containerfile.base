@@ -42,6 +42,13 @@ RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd \
 # Enable the service so it starts on boot (systemd is PID 1 in the booted OS).
 RUN systemctl enable httpd
 
+# Filesystem hygiene: /var and /run hold machine-local state that is reset/
+# regenerated at boot, so build-time leftovers there (dnf cache + history, logs,
+# subscription-manager artifacts) don't belong in the image — and bootc lint
+# flags them. Clear them as the last mutation before the lint runs.
+RUN rm -rf /var/cache/* /var/lib/dnf /var/log/* /var/tmp/* /tmp/* /run/* \
+           /var/lib/rhsm/* /var/lib/rhsm/.??*
+
 # Best practice: lint as the final instruction — validates single kernel,
 # kernel args, and filesystem hygiene.
 RUN bootc container lint
