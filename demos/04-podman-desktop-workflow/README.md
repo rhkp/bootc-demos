@@ -18,8 +18,14 @@ local VM launcher, so you can go from a `Containerfile` to a booted VM without m
 
 ```bash
 ./run.sh check   # verify Podman Desktop + machine, then install the Bootc extension in-app
-./run.sh         # same checks, then open Podman Desktop
+./run.sh         # same checks, build the demo image (if missing), open Podman Desktop
 ```
+
+> **If podman shows "connection refused" / "Cannot connect to Podman":** the machine went
+> stale — restart it and retry:
+> ```bash
+> podman machine stop && podman machine start
+> ```
 
 ## Steps (click-through)
 
@@ -37,13 +43,26 @@ local VM launcher, so you can go from a `Containerfile` to a booted VM without m
    then click **Build**. Under the hood this runs `bootc-image-builder`; expect **2–5 min**.
 3. **Enter your macOS password when prompted.** bib runs as a *rootful* container, so the
    extension does a `sudo podman run` and asks for credentials mid-build. This is expected.
-4. **Provide a login (config.toml).** Base images have **no default user**, so supply a user +
-   SSH key / password — the equivalent of [`common/config.toml.tmpl`](../../common/config.toml.tmpl).
-   Without this you won't be able to log into the VM.
+4. **Provide a login (config.toml).** Base images have **no default user**, so supply a
+   **username**, an **SSH public key** and/or **password**, and add the user to the **`wheel`**
+   group (for sudo) — the equivalent of
+   [`common/config.toml.tmpl`](../../common/config.toml.tmpl). Without this you won't be able to
+   log into the VM. No SSH key yet? Generate one and paste the `.pub` contents:
+   ```bash
+   ls ~/.ssh/id_ed25519.pub 2>/dev/null || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519
+   cat ~/.ssh/id_ed25519.pub
+   ```
 5. **Create the VM.** On the **Disk Images** page, use the **Create VM** button on the produced
    QCOW2 artifact to boot it locally (macOS + Linux supported), then open the console / SSH.
-6. **Verify.** In the VM: `bootc status`, `systemctl status httpd`,
-   `cat /usr/share/bootc-demo-version` → `v1`.
+6. **Verify it's a real booted host.** In the VM:
+   ```bash
+   uname -r                            # the image's own kernel
+   cat /proc/1/comm                    # systemd (PID 1 of the machine)
+   systemctl is-active httpd           # active
+   curl -s http://localhost/           # <h1>bootc demo — v1</h1>
+   cat /usr/share/bootc-demo-version   # v1
+   sudo bootc status                   # tracked deployment (like demo 03's libvirt path)
+   ```
 
 > **Architecture matching:** the bootc OCI image and the disk build must be the **same arch**.
 > On Apple Silicon, build an **arm64** image → **arm64** disk (what `./run.sh` does). To target
