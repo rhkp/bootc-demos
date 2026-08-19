@@ -46,8 +46,16 @@ RUN systemctl enable httpd
 # regenerated at boot, so build-time leftovers there (dnf cache + history, logs,
 # subscription-manager artifacts) don't belong in the image — and bootc lint
 # flags them. Clear them as the last mutation before the lint runs.
-RUN rm -rf /var/cache/* /var/lib/dnf /var/log/* /var/tmp/* /tmp/* /run/* \
-           /var/lib/rhsm/* /var/lib/rhsm/.??*
+#
+# Note on /run: some podman machines (e.g. the macOS libkrun VM) bind-mount
+# build-time files there (/run/secrets for RHSM creds, /run/.containerenv), so
+# `rm -rf /run/*` fails with "Device or resource busy". Bind mounts are never
+# committed into the image layer anyway, so the /run sweep is best-effort — it
+# clears real tmpfs cruft and ignores the busy mountpoints. Portable across the
+# Linux dev VM (no such mounts) and the Mac.
+RUN rm -rf /var/cache/* /var/lib/dnf /var/log/* /var/tmp/* /tmp/* \
+           /var/lib/rhsm/* /var/lib/rhsm/.??* \
+ && { find /run -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; }
 
 # Best practice: lint as the final instruction — validates single kernel,
 # kernel args, and filesystem hygiene.
