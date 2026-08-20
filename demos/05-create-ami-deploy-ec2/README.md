@@ -38,11 +38,27 @@ the console's *Launch from AMI*).
 This creates **billable** AWS resources (S3 staging object, an AMI + EBS snapshot, an EC2
 instance). Run `./run.sh cleanup` when done.
 
+**To pause between demos without re-uploading:** terminate *just the instance* (stops the compute
+charge) but keep the AMI + snapshot — then `./run.sh launch` boots a fresh instance in seconds
+with no rebuild. A full `./run.sh cleanup` deregisters the AMI and deletes the snapshot, so coming
+back means `build-ami` re-uploads the ~10 GB disk. (Kept snapshot storage is only pennies/day.)
+
+```bash
+# terminate instance only, keep the AMI for a quick relaunch later:
+aws --region "$AWS_REGION" ec2 terminate-instances --instance-ids "$(cat .instance-id)"
+rm -f .instance-id .instance-ip          # .ami-id stays -> ./run.sh launch reuses the AMI
+```
+
 Credentials — `run.sh` supports two ways and **stores no keys of its own**:
-- **EC2 instance role (recommended when building on an EC2 host):** attach an IAM role with EC2 +
-  S3 access to the builder instance. No `~/.aws` is needed — the host uses the role, and the bib
-  container reaches it over IMDS (the script adds `--network host` for that). This is how the demo
-  was validated.
+- **EC2 instance role (recommended when building on an EC2 host):** attach an IAM role to the
+  builder instance granting EC2 + S3 access. No `~/.aws` is needed — the host uses the role, and
+  the bib container reaches it over IMDS. The script adds `--network host` so the container can
+  reach the metadata service (`169.254.169.254`); without it the import step fails silently with
+  `http_code=000`. This is how the demo was validated. The role is the *caller* for the whole
+  flow, so it needs: S3 `PutObject`/`GetObject`/`ListBucket` on the staging bucket;
+  `ec2:ImportSnapshot`/`RegisterImage` for `build-ami`; and `ec2:RunInstances`/`Describe*`/
+  `CreateTags`/`TerminateInstances`/`DeregisterImage`/`DeleteSnapshot` for `launch`+`cleanup`. It
+  is *distinct from* the `vmimport` service role below.
 - **`~/.aws` config:** if `~/.aws` exists, it's mounted read-only into the builder and
   `AWS_PROFILE` is honored.
 
@@ -114,18 +130,30 @@ bucket (no account id needed):
 ./run.sh cleanup     # terminate instance, deregister AMI, delete snapshot
 ```
 
-Inside the instance:
+Inside the instance — prove it's a genuine bootc-managed host, not a conventional VM:
 
 ```bash
-bootc status                        # tracked image + digest on a real cloud host
-systemctl status httpd
-cat /usr/share/bootc-demo-version   # -> v1
+sudo bootc status                   # Booted image: localhost/bootc-demo:v1 + digest (amd64)
+findmnt /                           # SOURCE=composefs, FSTYPE=overlay, mounted ro
+touch /usr/testfile                 # fails: read-only /usr (transactional OS)
+cat /usr/share/bootc-demo-version   # -> v1  (our baked content)
+systemctl status httpd              # active  (our baked service)
 ```
+
+The clincher is `sudo bootc status` reporting `Booted image: localhost/bootc-demo:v1` with a
+digest — the machine declaring it runs the *exact container image you built* — combined with a
+read-only composefs root. That's the full bootc fingerprint.
 
 ## Expected output
 
-- `build-ami` prints a registered `ami-...` id.
-- `launch` prints a public IP; `ssh` lands you in the VM; `bootc status` shows the image.
+- `build-ami` uploads a **~10 GB** disk to S3 and takes several minutes; it then prints a
+  registered `ami-...` id. Re-running before cleanup re-uploads the disk (there's no resume).
+- `launch` prints a public IP; SSH works only after the OS finishes **first boot** (a minute or
+  two) — `run.sh ssh` polls until sshd answers with the baked demo key.
+- `ssh` lands you in the VM; `sudo bootc status` shows the booted image + digest.
+- **cleanup:** `./run.sh cleanup` terminates the instance, deregisters the AMI, and deletes the
+  snapshot — but the **S3 staging object is *not* auto-deleted** (it warns you). Delete it from
+  the console (or `aws s3 rm`) to avoid lingering storage charges.
 
 ## What next
 
