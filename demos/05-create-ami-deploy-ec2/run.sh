@@ -27,7 +27,15 @@ KEYDIR="$HERE/.demo-keys"
 STATE="$HERE/.instance-id"
 DEMO_USER="demo"
 
-_aws() { aws --profile "${AWS_PROFILE:-default}" --region "${AWS_REGION:?}" "$@"; }
+# Use an explicit --profile only if AWS_PROFILE is set; otherwise fall back to
+# the default AWS credential chain (env vars or an EC2 instance role via IMDS),
+# so the builder host needs no stored keys. Passing "--profile default" when no
+# ~/.aws config exists actually FAILS, so we must omit it in the role case.
+_aws() {
+  local prof=()
+  [ -n "${AWS_PROFILE:-}" ] && prof=(--profile "$AWS_PROFILE")
+  aws "${prof[@]}" --region "${AWS_REGION:?}" "$@"
+}
 
 _ensure_keys() {
   mkdir -p "$KEYDIR"; chmod 700 "$KEYDIR"
@@ -42,6 +50,14 @@ cmd_build_ami() {
   require_env AWS_REGION S3_BUCKET
   podman image exists "$LOCAL_TAG" \
     || die "$LOCAL_TAG not found — run demos/01-create-bootc-container first"
+  # bib runs rootful (sudo) and reads root's container storage. If demo 01 built
+  # the image rootless, it won't be visible to root — and bib no longer auto-pulls,
+  # nor can a localhost/ image be pulled from a registry. Copy it into rootful
+  # storage so the builder can find it.
+  if ! sudo podman image exists "$LOCAL_TAG"; then
+    log "copying $LOCAL_TAG into rootful storage (bib runs as root)"
+    podman save "$LOCAL_TAG" | sudo podman load
+  fi
   _ensure_keys
 
   # Render bib build config with our baked login user (base image has no default
@@ -53,16 +69,32 @@ cmd_build_ami() {
       "$ROOT/common/config.toml.tmpl" > "$cfg"
   ok "wrote $cfg (user=$DEMO_USER)"
 
+  # bib runs in a container and needs AWS credentials to stage the disk in S3 and
+  # register the AMI. Two supported ways — the second stores no keys on disk:
+  #   * ~/.aws present -> mount it read-only and honor AWS_PROFILE
+  #   * otherwise      -> use the EC2 instance role via IMDS; the builder needs
+  #                       host networking to reach the metadata service (169.254…).
+  local cred=()
+  if [ -d "$HOME/.aws" ]; then
+    cred+=( -v "$HOME/.aws":/root/.aws:ro --env "AWS_PROFILE=${AWS_PROFILE:-default}" )
+    log "using AWS credentials from ~/.aws"
+  else
+    cred+=( --network host --env "AWS_REGION=$AWS_REGION" )
+    log "no ~/.aws — using the EC2 instance role via IMDS (host network for the builder)"
+  fi
+  # Allocate a TTY only when we have one, so this also works over non-interactive
+  # SSH / CI (podman -it fails without a TTY).
+  local tty=(); [ -t 0 ] && tty=(-it)
+
   log "Building + registering AMI '$AMI_NAME' (arch=$AMI_ARCH, region=$AWS_REGION)"
   warn "this uploads a disk to s3://$S3_BUCKET and registers an AMI — billable"
-  sudo podman run --rm -it \
+  sudo podman run --rm "${tty[@]}" \
     --privileged \
     --pull=newer \
     --security-opt label=type:unconfined_t \
     -v "$cfg":/config.toml:ro \
-    -v "$HOME/.aws":/root/.aws:ro \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
-    --env "AWS_PROFILE=${AWS_PROFILE:-default}" \
+    "${cred[@]}" \
     quay.io/centos-bootc/bootc-image-builder:latest \
     --type ami \
     --target-arch "$AMI_ARCH" \
@@ -112,7 +144,7 @@ cmd_ssh() {
   local ip; ip="$(cat "$HERE/.instance-ip" 2>/dev/null || true)"
   [ -n "$ip" ] || die "no instance IP on record — run ./run.sh launch first"
   _ensure_keys
-  wait_for_ssh "$ip" "$DEMO_USER" 22 40
+  wait_for_ssh "$ip" "$DEMO_USER" 22 40 "$KEYDIR/id_ed25519"
   log "Inside: bootc status ; systemctl status httpd ; cat /usr/share/bootc-demo-version"
   exec ssh -o StrictHostKeyChecking=no -i "$KEYDIR/id_ed25519" "${DEMO_USER}@${ip}"
 }

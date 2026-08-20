@@ -77,12 +77,15 @@ podman_storage_root() {
 }
 
 # ---- ssh helpers ----------------------------------------------------------
-# wait_for_ssh HOST [USER] [PORT] [TRIES]: poll until sshd answers.
+# wait_for_ssh HOST [USER] [PORT] [TRIES] [IDENTITY]: poll until sshd answers.
+# Pass IDENTITY (a private key path) when logging in with a non-default key —
+# otherwise the BatchMode probe can never authenticate and loops until timeout.
 wait_for_ssh() {
-  local host="$1" user="${2:-root}" port="${3:-22}" tries="${4:-40}" i
+  local host="$1" user="${2:-root}" port="${3:-22}" tries="${4:-40}" id="${5:-}" i
+  local idopt=(); [ -n "$id" ] && idopt=(-o IdentitiesOnly=yes -i "$id")
   log "waiting for ssh at ${user}@${host}:${port} ..."
   for ((i=1; i<=tries; i++)); do
-    if ssh -o BatchMode=yes -o StrictHostKeyChecking=no \
+    if ssh -o BatchMode=yes -o StrictHostKeyChecking=no "${idopt[@]}" \
            -o ConnectTimeout=5 -p "$port" "${user}@${host}" true 2>/dev/null; then
       ok "ssh is up"; return 0
     fi
