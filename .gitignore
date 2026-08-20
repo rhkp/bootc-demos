@@ -1,6 +1,9 @@
 # local secrets / machine-specific config
 common/env
 
+# local reference material — not for publication
+knowledgebase/
+
 # generated build artifacts
 **/output/
 **/*.qcow2

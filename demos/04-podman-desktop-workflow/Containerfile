@@ -1,0 +1,27 @@
+# Demo 04 overlay — make the shared demo image work with Podman Desktop's
+# "Create VM" button on macOS.
+#
+# That button uses `macadam` (Apple Virtualization Framework), which injects the
+# login user + your SSH key at first boot via a cloud-init NoCloud seed. The base
+# centos-bootc image ships NO cloud-init (and no ignition), so the seed is
+# ignored, the VM boots with no user/key, and the extension's SSH terminal can't
+# connect. Adding cloud-init here makes the injection — and thus Create VM — work.
+#
+#   podman build -f Containerfile -t localhost/bootc-demo:v1-desktop .
+ARG FROM_IMAGE=localhost/bootc-demo:v1
+FROM ${FROM_IMAGE}
+
+RUN dnf -y install cloud-init && dnf clean all \
+ && systemctl enable cloud-init.service cloud-init-local.service \
+      cloud-config.service cloud-final.service
+
+# Same filesystem hygiene as the base image (see common/Containerfile.base):
+# clear build-time leftovers so they don't ship, and keep bootc lint clean. The
+# /run sweep is best-effort because podman bind-mounts files there during build.
+# cloud-init also seeds /var/lib/cloud at install time; it recreates that dir at
+# first boot, so drop it here too (keeps bootc lint to the base-only warning).
+RUN rm -rf /var/cache/* /var/lib/dnf /var/log/* /var/tmp/* /tmp/* \
+           /var/lib/rhsm/* /var/lib/rhsm/.??* /var/lib/cloud \
+ && { find /run -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; }
+
+RUN bootc container lint
