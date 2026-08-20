@@ -2,7 +2,7 @@
 
 A set of **standalone demos** for [bootc](https://github.com/containers/bootc) (bootable
 containers). Each demo shows the **same OCI image consumed a different way** — one of bootc's
-*consumption modes* from [`knowledgebase/`](./knowledgebase) — rather than one long pipeline.
+*consumption modes* — rather than one long pipeline.
 
 Build a Linux OS as a container image, then run that *same image* as: a plain container, a
 local VM, a cloud AMI on real EC2, and update/roll it back atomically.
@@ -56,7 +56,9 @@ cp common/env.example common/env
 $EDITOR common/env          # set REGISTRY, AWS_*, S3_BUCKET, INSTANCE_TYPE, arch, etc.
 ```
 
-`common/env` is gitignored. No secrets go in it — real AWS credentials live in `~/.aws`.
+`common/env` is gitignored and holds no secrets. AWS credentials come from either an **EC2
+instance role** (recommended when building on an EC2 host — nothing stored) or `~/.aws`; see
+[demo 05](./demos/05-create-ami-deploy-ec2) for both.
 
 ## Base image
 
@@ -70,7 +72,6 @@ filesystem (so `bootc-image-builder` needs no `--rootfs`). To use Fedora instead
 ```
 common/                 shared helpers, env template, base Containerfile, bib config template
 demos/0N-.../           one folder per demo: Containerfile (where relevant), run.sh, README.md
-knowledgebase/          the bootc technical brief these demos are built from
 ```
 
 Every `run.sh` supports a `cleanup` subcommand to remove what it created.
