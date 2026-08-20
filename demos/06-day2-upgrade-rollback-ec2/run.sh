@@ -31,7 +31,7 @@ KEY="$D05/.demo-keys/id_ed25519"
 
 _ec2_ip() { cat "$D05/.instance-ip" 2>/dev/null || die "no EC2 IP — run demo 05 (launch) first"; }
 _ssh() { ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$KEY" "${DEMO_USER}@$(_ec2_ip)" "$@"; }
-_wait() { wait_for_ssh "$(_ec2_ip)" "$DEMO_USER" 22 60; }
+_wait() { wait_for_ssh "$(_ec2_ip)" "$DEMO_USER" 22 60 "$KEY"; }
 
 _build_push() { # _build_push VERSION
   require_cmd podman

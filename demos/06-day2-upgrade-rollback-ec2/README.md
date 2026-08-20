@@ -20,10 +20,18 @@ The flow: the EC2 host starts **tracking a registry tag**, you push a **v2** ima
 - Demo 05 has run and left a **running EC2 instance** (`demos/05-.../.instance-ip` +
   `.demo-keys/`)
 - `REGISTRY` set in `common/env` to a registry the EC2 host can pull from
-  (e.g. `quay.io/<you>`, `ghcr.io/<you>`, or an ECR URI)
-- You are logged in to push: `podman login <registry>`
-- The EC2 host has outbound access to the registry (and, if the registry is **private**,
-  pull auth via `/etc/ostree/auth.json` on the host)
+  (e.g. `quay.io/<you>`, `ghcr.io/<you>`, or an ECR URI). Set this in the *live, gitignored*
+  `common/env` — not in any committed sample.
+- You are logged in **with push/write permission**: `podman login <registry>`. A read-only or
+  expired credential still authenticates but fails at the *end* of the push with
+  `unauthorized: access to the requested resource is not authorized` — all layers upload, then the
+  final manifest write is rejected. On Quay use a **CLI/encrypted password** or a **robot account
+  with Write**.
+- **Repo visibility:** the first `push-v1` auto-creates the repo, and Quay defaults new repos to
+  **private**. The EC2 host pulls **anonymously** during `adopt`/`upgrade`, so either make the
+  repo **Public** (simplest — Repository → Settings → Make Public) *or* place pull auth in
+  `/etc/ostree/auth.json` on the host for a private repo.
+- The EC2 host has outbound access to the registry.
 
 ## Why "adopt" first
 
